@@ -32,7 +32,7 @@ let addressescsv = [
 	//'https://raw.githubusercontent.com/cmliu/WorkerVless2sub/main/addressescsv.csv', //iptest测速结果文件。
 ];
 
-let subconverter = "url.v1.mk"; //在线订阅转换后端，目前使用肥羊的订阅转换功能。支持自建psub 可自行搭建https://github.com/bulianglin/psub
+let subconverter = "subapi-loadbalancing.pages.dev"; //在线订阅转换后端，目前使用CM的订阅转换功能。支持自建psub 可自行搭建https://github.com/bulianglin/psub
 let subconfig = "https://raw.githubusercontent.com/cmliu/ACL4SSR/main/Clash/config/ACL4SSR_Online_Full_MultiMode.ini"; //订阅转换配置文件
 let noTLS = 'false'; //改为 true , 将不做域名判断 始终返回noTLS节点
 let link = '';
@@ -60,6 +60,9 @@ let total = 99;//PB
 //let timestamp = now;
 let timestamp = 4102329600000;//2099-12-31
 const regex = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[.*\]):?(\d+)?#?(.*)?$/;
+// 虚假uuid和hostname，用于发送给配置生成服务
+let fakeUserID ;
+let fakeHostName ;
 async function sendMessage(type, ip, add_data = "") {
 	if ( BotToken !== '' && ChatID !== ''){
 		let msg = "";
@@ -259,6 +262,13 @@ export default {
 		let sni = "";
 		let UD = Math.floor(((timestamp - Date.now())/timestamp * 99 * 1099511627776 * 1024)/2);
 		if (env.UA) MamaJustKilledAMan = MamaJustKilledAMan.concat(await ADD(env.UA));
+
+		const currentDate = new Date();
+		const fakeUserIDMD5 = await MD5MD5(Math.ceil(currentDate.getTime()));
+		fakeUserID = fakeUserIDMD5.slice(0, 8) + "-" + fakeUserIDMD5.slice(8, 12) + "-" + fakeUserIDMD5.slice(12, 16) + "-" + fakeUserIDMD5.slice(16, 20) + "-" + fakeUserIDMD5.slice(20);
+		fakeHostName = fakeUserIDMD5.slice(6, 9) + "." + fakeUserIDMD5.slice(13, 19) + ".xyz";
+		//console.log(`${fakeUserID}\n${fakeHostName}`); // 打印fakeID
+
 		total = total * 1099511627776 * 1024;
 		let expire= Math.floor(timestamp / 1000) ;
 
@@ -409,7 +419,7 @@ export default {
 		
 		if (host.toLowerCase().includes('notls') || host.toLowerCase().includes('worker') || host.toLowerCase().includes('trycloudflare')) noTLS = 'true';
 		noTLS = env.NOTLS || noTLS;
-		let subconverterUrl = '';
+		let subconverterUrl = generateFakeInfo(url.href, uuid, host);
 
 		if (!userAgent.includes('subconverter') && MamaJustKilledAMan.some(PutAGunAgainstHisHeadPulledMyTriggerNowHesDead => userAgent.includes(PutAGunAgainstHisHeadPulledMyTriggerNowHesDead)) && MamaJustKilledAMan.length > 0) {
 			const envKey = env.URL302 ? 'URL302' : (env.URL ? 'URL' : null);
@@ -425,9 +435,9 @@ export default {
 				},
 			});
 		} else if ( (userAgent.includes('clash') || (format === 'clash' && !userAgent.includes('subconverter')) ) && !userAgent.includes('nekobox') && !userAgent.includes('cf-workers-sub')) {
-			subconverterUrl = `https://${subconverter}/sub?target=clash&url=${encodeURIComponent(request.url)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
+			subconverterUrl = `https://${subconverter}/sub?target=clash&url=${encodeURIComponent(subconverterUrl)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
 		} else if ( (userAgent.includes('sing-box') || userAgent.includes('singbox') || (format === 'singbox' && !userAgent.includes('subconverter')) ) && !userAgent.includes('cf-workers-sub')){
-			subconverterUrl = `https://${subconverter}/sub?target=singbox&url=${encodeURIComponent(request.url)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
+			subconverterUrl = `https://${subconverter}/sub?target=singbox&url=${encodeURIComponent(subconverterUrl)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
 		} else {
 			if(host.includes('workers.dev') || host.includes('pages.dev')) {
 				if (proxyhostsURL) {
@@ -499,7 +509,16 @@ export default {
 						port = match[2] || port;
 						addressid = match[3] || address;
 					}
-	
+
+					const httpPorts = ["8080","8880","2052","2082","2086","2095"];
+					if (!isValidIPv4(address) && port == "80") {
+						for (let httpPort of httpPorts) {
+							if (address.includes(httpPort)) {
+								port = httpPort;
+								break;
+							}
+						}
+					}
 					//console.log(address, port, addressid);
 
 					if (edgetunnel.trim() === 'cmliu' && RproxyIP.trim() === 'true') {
@@ -510,7 +529,7 @@ export default {
 					
 						if (socks5Data) {
 							const socks5 = getRandomProxyByMatch(lowerAddressid, socks5Data);
-							path = `/${socks5}`;
+							path = `/?${socks5}`;
 						} else {
 							// 遍历CMproxyIPs数组查找匹配项
 							for (let item of CMproxyIPs) {
@@ -522,11 +541,11 @@ export default {
 						
 							if (foundProxyIP) {
 								// 如果找到匹配的proxyIP，赋值给path
-								path = `/proxyIP=${foundProxyIP}`;
+								path = `/?proxyip=${foundProxyIP}`;
 							} else {
 								// 如果没有找到匹配项，随机选择一个proxyIP
 								const randomProxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
-								path = `/proxyIP=${randomProxyIP}`;
+								path = `/?proxyip=${randomProxyIP}`;
 							}
 						}
 					}
@@ -569,6 +588,15 @@ export default {
 					addressid = match[3] || address;
 				}
 
+				const httpsPorts = ["2053","2083","2087","2096","8443"];
+				if (!isValidIPv4(address) && port == "443") {
+					for (let httpsPort of httpsPorts) {
+						if (address.includes(httpsPort)) {
+							port = httpsPort;
+							break;
+						}
+					}
+				}
 				//console.log(address, port, addressid);
 		
 				if (edgetunnel.trim() === 'cmliu' && RproxyIP.trim() === 'true') {
@@ -579,7 +607,7 @@ export default {
 				
 					if (socks5Data) {
 						const socks5 = getRandomProxyByMatch(lowerAddressid, socks5Data);
-						path = `/${socks5}`;
+						path = `/?${socks5}`;
 					} else {
 						// 遍历CMproxyIPs数组查找匹配项
 						for (let item of CMproxyIPs) {
@@ -591,11 +619,11 @@ export default {
 					
 						if (foundProxyIP) {
 							// 如果找到匹配的proxyIP，赋值给path
-							path = `/proxyIP=${foundProxyIP}`;
+							path = `/?proxyip=${foundProxyIP}`;
 						} else {
 							// 如果没有找到匹配项，随机选择一个proxyIP
 							const randomProxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
-							path = `/proxyIP=${randomProxyIP}`;
+							path = `/?proxyip=${randomProxyIP}`;
 						}
 					}
 				}
@@ -611,11 +639,11 @@ export default {
 				}
 
 				if (协议类型 == 'Trojan'){
-					const trojanLink = `trojan://${uuid}@${address}:${port}?security=tls&sni=${sni}&fp=randomized&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;
+					const trojanLink = `trojan://${uuid}@${address}:${port}?security=tls&sni=${sni}&alpn=http%2F1.1&fp=randomized&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;
 
 					return trojanLink;
 				} else {
-					const vlessLink = `vless://${uuid}@${address}:${port}?encryption=none&security=tls&sni=${sni}&fp=random&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;
+					const vlessLink = `vless://${uuid}@${address}:${port}?encryption=none&security=tls&sni=${sni}&alpn=http%2F1.1&fp=random&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;
 			
 					return vlessLink;
 				}
@@ -636,7 +664,8 @@ export default {
 			
 			if (协议类型 == 'Trojan' && (userAgent.includes('surge') || (format === 'surge' && !userAgent.includes('subconverter')) ) && !userAgent.includes('cf-workers-sub')) {
 				const TrojanLinks = combinedContent.split('\n');
-				subconverterUrl =  `https://${subconverter}/sub?target=surge&ver=4&url=${encodeURIComponent(TrojanLinks.join('|'))}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&xudp=false&udp=false&tfo=false&expand=true&scv=true&fdn=false`;
+				const TrojanLinksJ8 = generateFakeInfo(TrojanLinks.join('|'), uuid, host);
+				subconverterUrl =  `https://${subconverter}/sub?target=surge&ver=4&url=${encodeURIComponent(TrojanLinksJ8)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&xudp=false&udp=false&tfo=false&expand=true&scv=true&fdn=false`;
 			} else {
 				const base64Response = btoa(combinedContent); // 重新进行 Base64 编码
 
@@ -666,7 +695,7 @@ export default {
 			if (协议类型 == 'Trojan' && (userAgent.includes('surge') || (format === 'surge' && !userAgent.includes('subconverter')) ) && !userAgent.includes('cf-workers-sub')){
 				subconverterContent = surge(subconverterContent, host);
 			}
-
+			subconverterContent = revertFakeInfo(subconverterContent, uuid, host);
 			return new Response(subconverterContent, {
 				headers: { 
 					"Content-Disposition": `attachment; filename*=utf-8''${encodeURIComponent(FileName)}; filename=${FileName}`,
@@ -728,4 +757,33 @@ function getRandomProxyByMatch(CC, socks5Data) {
 	// 从匹配的代理中随机选择一个并返回
 	const randomProxy = filteredProxies[Math.floor(Math.random() * filteredProxies.length)];
 	return randomProxy;
+}
+
+async function MD5MD5(text) {
+	const encoder = new TextEncoder();
+  
+	const firstPass = await crypto.subtle.digest('MD5', encoder.encode(text));
+	const firstPassArray = Array.from(new Uint8Array(firstPass));
+	const firstHex = firstPassArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+	const secondPass = await crypto.subtle.digest('MD5', encoder.encode(firstHex.slice(7, 27)));
+	const secondPassArray = Array.from(new Uint8Array(secondPass));
+	const secondHex = secondPassArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+	return secondHex.toLowerCase();
+}
+
+function revertFakeInfo(content, userID, hostName) {
+	content = content.replace(new RegExp(fakeUserID, 'g'), userID).replace(new RegExp(fakeHostName, 'g'), hostName);
+	return content;
+}
+
+function generateFakeInfo(content, userID, hostName) {
+	content = content.replace(new RegExp(userID, 'g'), fakeUserID).replace(new RegExp(hostName, 'g'), fakeHostName);
+	return content;
+}
+
+function isValidIPv4(address) {
+	const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+	return ipv4Regex.test(address);
 }
